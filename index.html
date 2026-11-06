@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delay Mirror</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="display"></canvas>
+  <video id="cam" playsinline muted hidden></video>
+
+  <div id="status" class="status" hidden></div>
+  <div id="error" class="error" hidden></div>
+
+  <div class="controls" id="controls">
+    <label for="delayNum">Delay</label>
+    <button id="minus" type="button" aria-label="Decrease delay">−</button>
+    <input id="delayNum" type="number" min="0" max="30" step="1" value="0">
+    <span class="unit">s</span>
+    <button id="plus" type="button" aria-label="Increase delay">+</button>
+    <input id="delayRange" type="range" min="0" max="30" step="1" value="0" aria-label="Delay in seconds">
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
