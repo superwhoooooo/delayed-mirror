@@ -1,7 +1,8 @@
 (() => {
   const MAX_DELAY = 30;
   const STORE_W = 960, STORE_H = 540;
-  const MAX_FRAMES = MAX_DELAY * 31; // hard cap on buffered frames
+  const MIN_INTERVAL = 30; // ms between stored frames (~33fps max)
+  const MAX_FRAMES = MAX_DELAY * 36; // safety cap; time-trimming keeps us well under it
 
   const $ = (id) => document.getElementById(id);
   const video = $('cam'), canvas = $('display'), ctx = canvas.getContext('2d');
@@ -11,6 +12,8 @@
   try { const saved = parseInt(localStorage.getItem('delay'), 10); if (!isNaN(saved)) delay = clamp(saved); } catch {}
   let frames = []; // {t, bmp}
   let stream = null;
+  let capturing = false; // one createImageBitmap in flight at a time keeps frames ordered
+  let lastCapT = -Infinity;
 
   function clamp(n) { return Math.max(0, Math.min(MAX_DELAY, n | 0)); }
 
@@ -42,6 +45,31 @@
     video.srcObject = stream;
     await video.play();
     requestAnimationFrame(loop);
+    // Capture on the camera's own frame clock so each frame is stamped with when it
+    // was actually captured, not when our render loop happened to run.
+    if ('requestVideoFrameCallback' in video) {
+      const onFrame = (now, meta) => {
+        video.requestVideoFrameCallback(onFrame);
+        capture(meta.captureTime ?? meta.receiveTime ?? now);
+      };
+      video.requestVideoFrameCallback(onFrame);
+    }
+  }
+
+  function capture(t) {
+    if (delay === 0 || capturing || document.hidden || video.readyState < 2) return;
+    if (t - lastCapT < MIN_INTERVAL || frames.length >= MAX_FRAMES) return;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw) return;
+    capturing = true;
+    lastCapT = t;
+    // Called synchronously so the bitmap snapshots the frame the callback reported.
+    createImageBitmap(video, { resizeWidth: STORE_W, resizeHeight: Math.round(STORE_W * vh / vw) })
+      .then((bmp) => {
+        if (delay === 0) bmp.close(); else frames.push({ t, bmp });
+      })
+      .catch(() => {})
+      .finally(() => { capturing = false; });
   }
 
   function drawCover(src, sw, sh) {
@@ -49,7 +77,7 @@
     ctx.drawImage(src, 0, 0, sw, sh);
   }
 
-  async function loop() {
+  function loop() {
     requestAnimationFrame(loop);
     if (video.readyState < 2 || document.hidden) return;
     const now = performance.now();
@@ -61,14 +89,8 @@
       return;
     }
 
-    // Capture downscaled frame into buffer.
-    if (frames.length < MAX_FRAMES) {
-      const h = Math.round(STORE_W * vh / vw);
-      try {
-        const bmp = await createImageBitmap(video, { resizeWidth: STORE_W, resizeHeight: h });
-        frames.push({ t: now, bmp });
-      } catch {}
-    }
+    // Browsers without requestVideoFrameCallback: capture from the render loop.
+    if (!('requestVideoFrameCallback' in video)) capture(now);
 
     // Find newest frame with t <= now - delay; drop older ones.
     const target = now - delay * 1000;
@@ -103,7 +125,7 @@
     }
   });
 
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) clearFrames(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearFrames(); lastCapT = -Infinity; } });
   window.addEventListener('pagehide', () => { if (stream) stream.getTracks().forEach((t) => t.stop()); clearFrames(); });
 
   setDelay(delay);
