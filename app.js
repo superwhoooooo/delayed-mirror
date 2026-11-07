@@ -7,8 +7,8 @@
   const video = $('cam'), canvas = $('display'), ctx = canvas.getContext('2d');
   const num = $('delayNum'), range = $('delayRange'), statusEl = $('status'), errorEl = $('error');
 
-  let delay = 0;
-  try { delay = clamp(parseInt(localStorage.getItem('delay'), 10) || 0); } catch {}
+  let delay = 3;
+  try { const saved = parseInt(localStorage.getItem('delay'), 10); if (!isNaN(saved)) delay = clamp(saved); } catch {}
   let frames = []; // {t, bmp}
   let stream = null;
 
